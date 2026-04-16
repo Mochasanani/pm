@@ -12,6 +12,7 @@ vi.mock("@/lib/api", () => ({
   deleteCard: vi.fn().mockResolvedValue(undefined),
   moveCardApi: vi.fn().mockResolvedValue(undefined),
   logout: vi.fn().mockResolvedValue(undefined),
+  sendChat: vi.fn().mockResolvedValue({ response: "ok", board_updates: [] }),
 }));
 
 const renderBoard = async () => {

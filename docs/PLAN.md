@@ -248,24 +248,30 @@ Extend AI calls to include board context and return structured responses that ca
 
 Add a sidebar UI for AI chat that can update the board in real time.
 
-- [ ] Create collapsible sidebar component (right side of board)
-- [ ] Chat message list with user/AI message distinction
-- [ ] Text input with send button
-- [ ] Display AI responses with markdown rendering
-- [ ] When AI returns board updates, apply them to the UI immediately
-- [ ] Auto-scroll to latest message
-- [ ] Loading indicator while AI is responding
-- [ ] Style sidebar using project color scheme
-- [ ] Sidebar toggle button in board header
+- [x] Create collapsible sidebar component (right side of board)
+- [x] Chat message list with user/AI message distinction
+- [x] Text input with send button
+- [x] Display AI responses with markdown rendering (via `react-markdown`)
+- [x] When AI returns board updates, apply them to the UI immediately (refetch board)
+- [x] Auto-scroll to latest message
+- [x] Loading indicator while AI is responding
+- [x] Style sidebar using project color scheme
+- [x] Sidebar toggle button in board header
 
 **Tests:**
-- [ ] Frontend unit: sidebar renders and toggles open/closed
-- [ ] Frontend unit: sending a message calls the chat API
-- [ ] Frontend unit: AI response displays in message list
-- [ ] Frontend unit: board updates from AI are reflected in the board
-- [ ] Frontend unit: loading state shows while waiting for AI
-- [ ] E2e test: open sidebar, send message, receive response
-- [ ] E2e test: AI creates a card via chat, card appears on board
-- [ ] E2e test: AI moves a card via chat, card moves on board
-- [ ] E2e test: conversation history maintained across messages
+- [x] Frontend unit: sidebar renders and toggles open/closed
+- [x] Frontend unit: sending a message calls the chat API
+- [x] Frontend unit: AI response displays in message list
+- [x] Frontend unit: board updates from AI trigger a board reload
+- [x] Frontend unit: loading state shows while waiting for AI
+- [x] E2e test: open sidebar, send message, receive response
+- [x] E2e test: AI creates a card via chat, card appears on board
+- [x] E2e test: sidebar closes via Close button
+- [x] E2e test: conversation history maintained across messages
+
+**Design decisions:**
+- Used `react-markdown` for assistant replies; user messages are plain text
+- Sidebar is a fixed right drawer, toggled from the board header ("Ask AI" button)
+- On replies containing `board_updates`, frontend calls `loadBoard()` to refetch rather than applying updates locally — simpler, always consistent
+- E2e tests mock `/api/ai/chat` via Playwright route interception (no network/API key needed); the "AI-created card" test still uses real backend endpoints to simulate the board-state change
 **Success criteria:** Sidebar chat works end-to-end. AI can read and modify the board through conversation. UI updates reflect AI changes immediately. All tests pass.

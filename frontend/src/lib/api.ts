@@ -81,3 +81,14 @@ export async function moveCardApi(cardId: string, columnId: string, position: nu
   const res = await jsonPut(`/api/board/cards/${cardId}/move`, { column_id: Number(columnId), position });
   if (!res.ok) throw new Error("Failed to move card");
 }
+
+export type ChatReply = {
+  response: string;
+  board_updates: Array<Record<string, unknown>>;
+};
+
+export async function sendChat(message: string): Promise<ChatReply> {
+  const res = await jsonPost("/api/ai/chat", { message });
+  if (!res.ok) throw new Error("Chat failed");
+  return res.json();
+}
