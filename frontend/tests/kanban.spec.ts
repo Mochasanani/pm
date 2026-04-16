@@ -27,26 +27,25 @@ test("adds a card to a column", async ({ page }) => {
 
 test("moves a card between columns", async ({ page }) => {
   await login(page);
-  const card = page.getByTestId("card-card-1");
-  const targetColumn = page.getByTestId("column-col-review");
+  const firstColumn = page.locator('[data-testid^="column-"]').first();
+  const secondColumn = page.locator('[data-testid^="column-"]').nth(1);
+  const card = firstColumn.locator('[data-testid^="card-"]').first();
+  const cardTitle = await card.locator("h4").textContent();
+  const initialFirstCount = await firstColumn.locator('[data-testid^="card-"]').count();
+
   const cardBox = await card.boundingBox();
-  const columnBox = await targetColumn.boundingBox();
-  if (!cardBox || !columnBox) {
+  const colBox = await secondColumn.boundingBox();
+  if (!cardBox || !colBox) {
     throw new Error("Unable to resolve drag coordinates.");
   }
 
-  await page.mouse.move(
-    cardBox.x + cardBox.width / 2,
-    cardBox.y + cardBox.height / 2
-  );
+  await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(
-    columnBox.x + columnBox.width / 2,
-    columnBox.y + 120,
-    { steps: 12 }
-  );
+  await page.mouse.move(colBox.x + colBox.width / 2, colBox.y + 120, { steps: 12 });
   await page.mouse.up();
-  await expect(targetColumn.getByTestId("card-card-1")).toBeVisible();
+
+  await expect(firstColumn.locator('[data-testid^="card-"]')).toHaveCount(initialFirstCount - 1);
+  await expect(secondColumn.locator(`text=${cardTitle}`)).toBeVisible();
 });
 
 test("renames a column", async ({ page }) => {
@@ -59,9 +58,10 @@ test("renames a column", async ({ page }) => {
 
 test("removes a card", async ({ page }) => {
   await login(page);
-  const card = page.getByTestId("card-card-1");
+  const firstColumn = page.locator('[data-testid^="column-"]').first();
+  const card = firstColumn.locator('[data-testid^="card-"]').first();
+  const initialCount = await page.locator('[data-testid^="card-"]').count();
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: /delete/i }).click();
-  await expect(card).not.toBeVisible();
-  await expect(page.locator('[data-testid^="card-"]')).toHaveCount(7);
+  await expect(page.locator('[data-testid^="card-"]')).toHaveCount(initialCount - 1);
 });

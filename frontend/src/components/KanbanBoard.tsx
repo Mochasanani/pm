@@ -1,20 +1,28 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
-  closestCorners,
+  closestCenter,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
-import { createId, initialData, moveCard, type BoardData } from "@/lib/kanban";
-import { logout } from "@/lib/auth";
+import { moveCard, type BoardData } from "@/lib/kanban";
+import {
+  fetchBoard,
+  renameColumn as renameColumnApi,
+  createCard as createCardApi,
+  deleteCard as deleteCardApi,
+  moveCardApi,
+  logout,
+} from "@/lib/api";
 
 type KanbanBoardProps = {
   user: string;
@@ -22,8 +30,26 @@ type KanbanBoardProps = {
 };
 
 export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
-  const [board, setBoard] = useState<BoardData>(() => initialData);
+  const [board, setBoard] = useState<BoardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+
+  const loadBoard = useCallback(async () => {
+    try {
+      const data = await fetchBoard();
+      setBoard(data);
+      setError(null);
+    } catch {
+      setError("Failed to load board");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBoard();
+  }, [loadBoard]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -31,69 +57,131 @@ export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
     })
   );
 
-  const cardsById = useMemo(() => board.cards, [board.cards]);
+  const cardsById = useMemo(() => board?.cards ?? {}, [board?.cards]);
+
+  // Board state before drag started, used for rollback on API failure
+  const [preDragBoard, setPreDragBoard] = useState<BoardData | null>(null);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
+    setPreDragBoard(board);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !board) return;
+
+    const newColumns = moveCard(board.columns, active.id as string, over.id as string);
+    setBoard({ ...board, columns: newColumns });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveCardId(null);
 
-    if (!over || active.id === over.id) {
+    if (!over || !board) {
+      // Cancelled -- rollback
+      if (preDragBoard) setBoard(preDragBoard);
+      setPreDragBoard(null);
       return;
     }
 
-    setBoard((prev) => ({
-      ...prev,
-      columns: moveCard(prev.columns, active.id as string, over.id as string),
-    }));
+    // Apply final position if different from current
+    if (active.id !== over.id) {
+      const newColumns = moveCard(board.columns, active.id as string, over.id as string);
+      setBoard({ ...board, columns: newColumns });
+    }
+
+    // Fire API call for wherever the card ended up
+    const cardId = active.id as string;
+    const targetCol = board.columns.find((col) => col.cardIds.includes(cardId));
+    if (targetCol) {
+      const position = targetCol.cardIds.indexOf(cardId);
+      moveCardApi(cardId, targetCol.id, position).catch(() => {
+        if (preDragBoard) setBoard(preDragBoard);
+      });
+    }
+    setPreDragBoard(null);
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
-    setBoard((prev) => ({
-      ...prev,
-      columns: prev.columns.map((column) =>
+    if (!board) return;
+    setBoard({
+      ...board,
+      columns: board.columns.map((column) =>
         column.id === columnId ? { ...column, title } : column
       ),
-    }));
+    });
+    renameColumnApi(columnId, title).catch(() => loadBoard());
   };
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
-    const id = createId("card");
-    setBoard((prev) => ({
-      ...prev,
-      cards: {
-        ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
-      },
-      columns: prev.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
-      ),
-    }));
+  const handleAddCard = async (columnId: string, title: string, details: string) => {
+    try {
+      const card = await createCardApi(columnId, title, details);
+      const cardId = String(card.id);
+      setBoard((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          cards: {
+            ...prev.cards,
+            [cardId]: { id: cardId, title: card.title, details: card.details },
+          },
+          columns: prev.columns.map((column) =>
+            column.id === columnId
+              ? { ...column, cardIds: [...column.cardIds, cardId] }
+              : column
+          ),
+        };
+      });
+    } catch {
+      loadBoard();
+    }
   };
 
   const handleDeleteCard = (columnId: string, cardId: string) => {
-    setBoard((prev) => {
-      return {
-        ...prev,
-        cards: Object.fromEntries(
-          Object.entries(prev.cards).filter(([id]) => id !== cardId)
-        ),
-        columns: prev.columns.map((column) =>
-          column.id === columnId
-            ? {
-                ...column,
-                cardIds: column.cardIds.filter((id) => id !== cardId),
-              }
-            : column
-        ),
-      };
+    if (!board) return;
+    const prevBoard = board;
+    setBoard({
+      ...board,
+      cards: Object.fromEntries(
+        Object.entries(board.cards).filter(([id]) => id !== cardId)
+      ),
+      columns: board.columns.map((column) =>
+        column.id === columnId
+          ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
+          : column
+      ),
     });
+    deleteCardApi(cardId).catch(() => setBoard(prevBoard));
   };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
+          Loading board...
+        </p>
+      </div>
+    );
+  }
+
+  if (error || !board) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <p className="text-sm font-semibold text-red-600">{error ?? "Something went wrong"}</p>
+          <button
+            type="button"
+            onClick={() => { setLoading(true); loadBoard(); }}
+            className="mt-4 rounded-full bg-[var(--primary-blue)] px-6 py-2 text-sm font-semibold text-white"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
 
@@ -158,8 +246,9 @@ export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={closestCenter}
           onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
           <section className="grid gap-6 lg:grid-cols-5">
@@ -168,6 +257,7 @@ export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
                 key={column.id}
                 column={column}
                 cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                isDragTarget={activeCardId != null && column.cardIds.includes(activeCardId) && !preDragBoard?.columns.find((c) => c.id === column.id)?.cardIds.includes(activeCardId)}
                 onRename={handleRenameColumn}
                 onAddCard={handleAddCard}
                 onDeleteCard={handleDeleteCard}

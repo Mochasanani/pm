@@ -8,6 +8,7 @@ import { NewCardForm } from "@/components/NewCardForm";
 type KanbanColumnProps = {
   column: Column;
   cards: Card[];
+  isDragTarget?: boolean;
   onRename: (columnId: string, title: string) => void;
   onAddCard: (columnId: string, title: string, details: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
@@ -16,6 +17,7 @@ type KanbanColumnProps = {
 export const KanbanColumn = ({
   column,
   cards,
+  isDragTarget,
   onRename,
   onAddCard,
   onDeleteCard,
@@ -27,7 +29,7 @@ export const KanbanColumn = ({
       ref={setNodeRef}
       className={clsx(
         "flex min-h-[520px] flex-col rounded-3xl border border-[var(--stroke)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow)] transition",
-        isOver && "ring-2 ring-[var(--accent-yellow)]"
+        (isOver || isDragTarget) && "ring-2 ring-[var(--accent-yellow)]"
       )}
       data-testid={`column-${column.id}`}
     >
