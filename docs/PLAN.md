@@ -215,24 +215,30 @@ Enable the backend to make AI calls via OpenRouter. Verify with a simple test.
 
 Extend AI calls to include board context and return structured responses that can modify the board.
 
-- [ ] Define structured output schema: `{ response: string, board_updates?: BoardUpdate[] }`
-- [ ] `BoardUpdate` types: create_card, update_card, delete_card, move_card
-- [ ] `POST /api/ai/chat` endpoint:
-  - [ ] Accepts user message and conversation history
-  - [ ] Sends system prompt with current board JSON + user message
-  - [ ] Parses structured output from AI
-  - [ ] Applies board updates to database if present
-  - [ ] Returns AI response text and applied changes
-- [ ] Store conversation history per session
+- [x] Define structured output schema: `{ response: string, board_updates?: BoardUpdate[] }`
+- [x] `BoardUpdate` types: create_card, update_card, delete_card, move_card
+- [x] `POST /api/ai/chat` endpoint:
+  - [x] Accepts user message and conversation history
+  - [x] Sends system prompt with current board JSON + user message
+  - [x] Parses structured output from AI
+  - [x] Applies board updates to database if present
+  - [x] Returns AI response text and applied changes
+- [x] Store conversation history per session
 
 **Tests:**
-- [ ] Unit test: system prompt includes current board state
-- [ ] Unit test: structured output parsing handles valid responses
-- [ ] Unit test: structured output parsing rejects malformed responses
-- [ ] Unit test: board updates are applied correctly to database
-- [ ] Unit test: conversation history is maintained across messages
-- [ ] Integration test: AI responds with board modifications that are applied
-- [ ] Integration test: AI responds with text-only answer when no board changes needed
+- [x] Unit test: system prompt includes current board state
+- [x] Unit test: structured output parsing handles valid responses
+- [x] Unit test: structured output parsing rejects malformed responses
+- [x] Unit test: board updates are applied correctly to database
+- [x] Unit test: conversation history is maintained across messages
+- [x] Integration test: AI responds with board modifications that are applied
+- [x] Integration test: AI responds with text-only answer when no board changes needed
+
+**Design decisions:**
+- Single flat `BoardUpdate` model with `action` literal + optional fields (simpler JSON schema than discriminated union)
+- Conversation history kept in-memory per username (`ai.conversations` dict), cleared on server restart
+- `apply_update` validates user ownership and silently no-ops on invalid/missing IDs rather than raising
+- Uses `client.chat.completions.parse(response_format=ChatResponse)` for structured output via pydantic
 
 **Success criteria:** AI can read the board, answer questions about it, and modify it via structured outputs. Changes persist in the database.
 

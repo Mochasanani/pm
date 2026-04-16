@@ -5,13 +5,16 @@ from fastapi.testclient import TestClient
 
 from app.db import init_db
 from app.auth import sessions
+from app.ai import conversations
 
 
 @pytest.fixture(autouse=True)
 def clean_sessions():
     sessions.clear()
+    conversations.clear()
     yield
     sessions.clear()
+    conversations.clear()
 
 
 @pytest.fixture(autouse=True)
