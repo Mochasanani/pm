@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { sendChat } from "@/lib/api";
+import { clearConversation, sendChat } from "@/lib/api";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -32,7 +32,13 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
     setLoading(true);
     try {
       const reply = await sendChat(text);
-      setMessages((m) => [...m, { role: "assistant", content: reply.response }]);
+      const applied = reply.applied ?? reply.board_updates?.length ?? 0;
+      const suffix = applied > 0 ? `\n\n_(${applied} change${applied === 1 ? "" : "s"} applied)_` : "";
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: reply.response + suffix },
+      ]);
+      setError(null);
       if (reply.board_updates && reply.board_updates.length > 0) {
         onBoardChanged();
       }
@@ -40,6 +46,16 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
       setError("AI request failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setMessages([]);
+    setError(null);
+    try {
+      await clearConversation();
+    } catch {
+      // best-effort
     }
   };
 
@@ -83,14 +99,24 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
             Ask the AI
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label="Collapse chat"
-          className="rounded-full border border-[var(--stroke)] px-3 py-1 text-xs font-semibold text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
-        >
-          Collapse
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleClear}
+            aria-label="Clear chat"
+            className="rounded-full border border-[var(--stroke)] px-3 py-1 text-xs font-semibold text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label="Collapse chat"
+            className="rounded-full border border-[var(--stroke)] px-3 py-1 text-xs font-semibold text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
+          >
+            Collapse
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4" data-testid="ai-messages">

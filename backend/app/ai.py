@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import Literal
 
@@ -6,11 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from openai import OpenAI, OpenAIError
 from pydantic import BaseModel
 
-from app.board import get_board, require_user
-from app.db import ensure_user, get_connection
+from app import services
+from app.board import require_user
+from app.db import db_conn, ensure_user
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL = "openai/gpt-oss-120b"
+MAX_HISTORY_TURNS = 20  # user+assistant messages kept per session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai")
 
@@ -76,94 +81,50 @@ def build_system_prompt(board: dict) -> str:
     )
 
 
-def apply_update(conn, user_id: int, update: BoardUpdate) -> None:
-    if update.action == "create_card":
-        if update.column_id is None or update.title is None:
-            return
-        col = conn.execute(
-            "SELECT id FROM columns WHERE id = ? AND user_id = ?",
-            (update.column_id, user_id),
-        ).fetchone()
-        if not col:
-            return
-        max_pos = conn.execute(
-            "SELECT COALESCE(MAX(position), -1) AS mp FROM cards WHERE column_id = ?",
-            (update.column_id,),
-        ).fetchone()["mp"]
-        conn.execute(
-            "INSERT INTO cards (column_id, title, details, position) VALUES (?, ?, ?, ?)",
-            (update.column_id, update.title, update.details or "No details yet.", max_pos + 1),
-        )
-    elif update.action == "update_card":
-        if update.card_id is None:
-            return
-        card = conn.execute(
-            """SELECT cards.id FROM cards
-               JOIN columns ON cards.column_id = columns.id
-               WHERE cards.id = ? AND columns.user_id = ?""",
-            (update.card_id, user_id),
-        ).fetchone()
-        if not card:
-            return
-        sets, params = [], []
-        if update.title is not None:
-            sets.append("title = ?")
-            params.append(update.title)
-        if update.details is not None:
-            sets.append("details = ?")
-            params.append(update.details)
-        if sets:
-            params.append(update.card_id)
-            conn.execute(f"UPDATE cards SET {', '.join(sets)} WHERE id = ?", params)
-    elif update.action == "delete_card":
-        if update.card_id is None:
-            return
-        card = conn.execute(
-            """SELECT cards.id, cards.column_id, cards.position FROM cards
-               JOIN columns ON cards.column_id = columns.id
-               WHERE cards.id = ? AND columns.user_id = ?""",
-            (update.card_id, user_id),
-        ).fetchone()
-        if not card:
-            return
-        conn.execute("DELETE FROM cards WHERE id = ?", (update.card_id,))
-        conn.execute(
-            "UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?",
-            (card["column_id"], card["position"]),
-        )
-    elif update.action == "move_card":
-        if update.card_id is None or update.column_id is None or update.position is None:
-            return
-        card = conn.execute(
-            """SELECT cards.id, cards.column_id, cards.position FROM cards
-               JOIN columns ON cards.column_id = columns.id
-               WHERE cards.id = ? AND columns.user_id = ?""",
-            (update.card_id, user_id),
-        ).fetchone()
-        target = conn.execute(
-            "SELECT id FROM columns WHERE id = ? AND user_id = ?",
-            (update.column_id, user_id),
-        ).fetchone()
-        if not card or not target:
-            return
-        conn.execute(
-            "UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?",
-            (card["column_id"], card["position"]),
-        )
-        conn.execute(
-            "UPDATE cards SET position = position + 1 WHERE column_id = ? AND position >= ?",
-            (update.column_id, update.position),
-        )
-        conn.execute(
-            "UPDATE cards SET column_id = ?, position = ? WHERE id = ?",
-            (update.column_id, update.position, update.card_id),
-        )
-    conn.commit()
+def apply_update(conn, user_id: int, update: BoardUpdate) -> bool:
+    """Apply a single update. Returns True if applied, False if skipped."""
+    try:
+        if update.action == "create_card":
+            if update.column_id is None or update.title is None:
+                return False
+            services.create_card(
+                conn, user_id, update.column_id, update.title, update.details or ""
+            )
+        elif update.action == "update_card":
+            if update.card_id is None:
+                return False
+            services.update_card(
+                conn, user_id, update.card_id, update.title, update.details
+            )
+        elif update.action == "delete_card":
+            if update.card_id is None:
+                return False
+            services.delete_card(conn, user_id, update.card_id)
+        elif update.action == "move_card":
+            if (
+                update.card_id is None
+                or update.column_id is None
+                or update.position is None
+            ):
+                return False
+            services.move_card(
+                conn, user_id, update.card_id, update.column_id, update.position
+            )
+        else:
+            return False
+    except services.NotFoundError:
+        return False
+    return True
 
 
 @router.post("/chat")
-def ai_chat(body: ChatRequest, username: str = Depends(require_user)):
-    board = get_board(username=username)
+def ai_chat(
+    body: ChatRequest,
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
+    user_id = ensure_user(conn, username)
+    board = services.load_board(conn, user_id)
     system_prompt = build_system_prompt(board)
 
     history = conversations.setdefault(username, [])
@@ -185,16 +146,34 @@ def ai_chat(body: ChatRequest, username: str = Depends(require_user)):
     if parsed is None:
         raise HTTPException(status_code=502, detail="AI returned malformed response")
 
-    conn = get_connection()
-    user_id = ensure_user(conn, username)
+    applied = 0
+    skipped = 0
     for update in parsed.board_updates:
-        apply_update(conn, user_id, update)
-    conn.close()
+        ok = apply_update(conn, user_id, update)
+        logger.info(
+            "ai_mutation user=%s action=%s applied=%s payload=%s",
+            username, update.action, ok, update.model_dump(exclude_none=True),
+        )
+        if ok:
+            applied += 1
+        else:
+            skipped += 1
 
     history.append({"role": "user", "content": body.message})
     history.append({"role": "assistant", "content": parsed.response})
+    # Keep only the most recent MAX_HISTORY_TURNS messages
+    if len(history) > MAX_HISTORY_TURNS:
+        del history[: len(history) - MAX_HISTORY_TURNS]
 
     return {
         "response": parsed.response,
         "board_updates": [u.model_dump() for u in parsed.board_updates],
+        "applied": applied,
+        "skipped": skipped,
     }
+
+
+@router.delete("/conversation")
+def clear_conversation(username: str = Depends(require_user)):
+    conversations.pop(username, None)
+    return {"ok": True}

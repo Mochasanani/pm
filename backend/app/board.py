@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Cookie, Depends, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+import os
 
+from fastapi import APIRouter, Cookie, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+from app import services
 from app.auth import get_current_user
-from app.db import get_connection, ensure_user
+from app.db import db_conn, ensure_user, seed_board
 
 router = APIRouter(prefix="/api/board")
 
@@ -16,206 +18,115 @@ def require_user(session: str | None = Cookie(default=None)) -> str:
 
 
 @router.get("")
-def get_board(username: str = Depends(require_user)):
-    conn = get_connection()
+def get_board(username: str = Depends(require_user), conn=Depends(db_conn)):
     user_id = ensure_user(conn, username)
-
-    columns = conn.execute(
-        "SELECT id, title, position FROM columns WHERE user_id = ? ORDER BY position",
-        (user_id,),
-    ).fetchall()
-
-    result_columns = []
-    all_cards: dict[int, dict] = {}
-
-    for col in columns:
-        cards = conn.execute(
-            "SELECT id, title, details, position FROM cards WHERE column_id = ? ORDER BY position",
-            (col["id"],),
-        ).fetchall()
-        card_ids = []
-        for card in cards:
-            card_dict = {"id": card["id"], "title": card["title"], "details": card["details"]}
-            all_cards[card["id"]] = card_dict
-            card_ids.append(card["id"])
-        result_columns.append({
-            "id": col["id"],
-            "title": col["title"],
-            "cardIds": card_ids,
-        })
-
-    conn.close()
-    return {"columns": result_columns, "cards": all_cards}
+    return services.load_board(conn, user_id)
 
 
 class RenameColumnRequest(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=200)
 
 
 @router.put("/columns/{column_id}")
-def rename_column(column_id: int, body: RenameColumnRequest, username: str = Depends(require_user)):
-    conn = get_connection()
+def rename_column(
+    column_id: int,
+    body: RenameColumnRequest,
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
     user_id = ensure_user(conn, username)
-
-    col = conn.execute(
-        "SELECT id FROM columns WHERE id = ? AND user_id = ?", (column_id, user_id)
-    ).fetchone()
-    if not col:
-        conn.close()
-        return JSONResponse(status_code=404, content={"error": "Column not found"})
-
-    conn.execute("UPDATE columns SET title = ? WHERE id = ?", (body.title, column_id))
-    conn.commit()
-    conn.close()
-    return {"id": column_id, "title": body.title}
+    try:
+        return services.rename_column(conn, user_id, column_id, body.title)
+    except services.NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 class CreateCardRequest(BaseModel):
     column_id: int
-    title: str
-    details: str = ""
+    title: str = Field(min_length=1, max_length=200)
+    details: str = Field(default="", max_length=5000)
 
 
 @router.post("/cards")
-def create_card(body: CreateCardRequest, username: str = Depends(require_user)):
-    conn = get_connection()
+def create_card(
+    body: CreateCardRequest,
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
     user_id = ensure_user(conn, username)
-
-    col = conn.execute(
-        "SELECT id FROM columns WHERE id = ? AND user_id = ?", (body.column_id, user_id)
-    ).fetchone()
-    if not col:
-        conn.close()
-        return JSONResponse(status_code=404, content={"error": "Column not found"})
-
-    max_pos = conn.execute(
-        "SELECT COALESCE(MAX(position), -1) as mp FROM cards WHERE column_id = ?", (body.column_id,)
-    ).fetchone()["mp"]
-
-    cur = conn.execute(
-        "INSERT INTO cards (column_id, title, details, position) VALUES (?, ?, ?, ?)",
-        (body.column_id, body.title, body.details or "No details yet.", max_pos + 1),
-    )
-    conn.commit()
-    card_id = cur.lastrowid
-    conn.close()
-    return {"id": card_id, "title": body.title, "details": body.details or "No details yet."}
+    try:
+        return services.create_card(conn, user_id, body.column_id, body.title, body.details)
+    except services.NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 class UpdateCardRequest(BaseModel):
-    title: str | None = None
-    details: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    details: str | None = Field(default=None, max_length=5000)
 
 
 @router.put("/cards/{card_id}")
-def update_card(card_id: int, body: UpdateCardRequest, username: str = Depends(require_user)):
-    conn = get_connection()
+def update_card(
+    card_id: int,
+    body: UpdateCardRequest,
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
     user_id = ensure_user(conn, username)
-
-    card = conn.execute(
-        """SELECT cards.id FROM cards
-           JOIN columns ON cards.column_id = columns.id
-           WHERE cards.id = ? AND columns.user_id = ?""",
-        (card_id, user_id),
-    ).fetchone()
-    if not card:
-        conn.close()
-        return JSONResponse(status_code=404, content={"error": "Card not found"})
-
-    updates = []
-    params: list = []
-    if body.title is not None:
-        updates.append("title = ?")
-        params.append(body.title)
-    if body.details is not None:
-        updates.append("details = ?")
-        params.append(body.details)
-
-    if updates:
-        params.append(card_id)
-        conn.execute(f"UPDATE cards SET {', '.join(updates)} WHERE id = ?", params)
-        conn.commit()
-
-    row = conn.execute("SELECT id, title, details FROM cards WHERE id = ?", (card_id,)).fetchone()
-    conn.close()
-    return {"id": row["id"], "title": row["title"], "details": row["details"]}
+    try:
+        return services.update_card(conn, user_id, card_id, body.title, body.details)
+    except services.NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
 
 
 @router.delete("/cards/{card_id}")
-def delete_card(card_id: int, username: str = Depends(require_user)):
-    conn = get_connection()
+def delete_card(
+    card_id: int,
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
     user_id = ensure_user(conn, username)
-
-    card = conn.execute(
-        """SELECT cards.id, cards.column_id, cards.position FROM cards
-           JOIN columns ON cards.column_id = columns.id
-           WHERE cards.id = ? AND columns.user_id = ?""",
-        (card_id, user_id),
-    ).fetchone()
-    if not card:
-        conn.close()
-        return JSONResponse(status_code=404, content={"error": "Card not found"})
-
-    conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
-    # Renumber positions in the column
-    conn.execute(
-        """UPDATE cards SET position = position - 1
-           WHERE column_id = ? AND position > ?""",
-        (card["column_id"], card["position"]),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        services.delete_card(conn, user_id, card_id)
+    except services.NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     return {"ok": True}
 
 
 class MoveCardRequest(BaseModel):
     column_id: int
-    position: int
+    position: int = Field(ge=0)
+
+
+@router.post("/reset")
+def reset_board(
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
+    """Wipe and re-seed the board. Gated by DEV_MODE=1 env var; used by e2e tests."""
+    if os.environ.get("DEV_MODE", "").lower() not in ("1", "true", "yes"):
+        raise HTTPException(status_code=403, detail="DEV_MODE not enabled")
+    user_id = ensure_user(conn, username)
+    conn.execute(
+        "DELETE FROM cards WHERE column_id IN (SELECT id FROM columns WHERE user_id = ?)",
+        (user_id,),
+    )
+    conn.execute("DELETE FROM columns WHERE user_id = ?", (user_id,))
+    conn.commit()
+    seed_board(conn, user_id)
+    return {"ok": True}
 
 
 @router.put("/cards/{card_id}/move")
-def move_card(card_id: int, body: MoveCardRequest, username: str = Depends(require_user)):
-    conn = get_connection()
+def move_card(
+    card_id: int,
+    body: MoveCardRequest,
+    username: str = Depends(require_user),
+    conn=Depends(db_conn),
+):
     user_id = ensure_user(conn, username)
-
-    card = conn.execute(
-        """SELECT cards.id, cards.column_id, cards.position FROM cards
-           JOIN columns ON cards.column_id = columns.id
-           WHERE cards.id = ? AND columns.user_id = ?""",
-        (card_id, user_id),
-    ).fetchone()
-    if not card:
-        conn.close()
-        return JSONResponse(status_code=404, content={"error": "Card not found"})
-
-    target_col = conn.execute(
-        "SELECT id FROM columns WHERE id = ? AND user_id = ?", (body.column_id, user_id)
-    ).fetchone()
-    if not target_col:
-        conn.close()
-        return JSONResponse(status_code=404, content={"error": "Target column not found"})
-
-    old_col_id = card["column_id"]
-    old_pos = card["position"]
-
-    # Remove from old position
-    conn.execute(
-        "UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?",
-        (old_col_id, old_pos),
-    )
-
-    # Make room in target column
-    conn.execute(
-        "UPDATE cards SET position = position + 1 WHERE column_id = ? AND position >= ?",
-        (body.column_id, body.position),
-    )
-
-    # Move the card
-    conn.execute(
-        "UPDATE cards SET column_id = ?, position = ? WHERE id = ?",
-        (body.column_id, body.position, card_id),
-    )
-
-    conn.commit()
-    conn.close()
+    try:
+        services.move_card(conn, user_id, card_id, body.column_id, body.position)
+    except services.NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     return {"ok": True}

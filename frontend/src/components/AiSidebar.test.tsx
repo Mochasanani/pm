@@ -5,14 +5,18 @@ import { AiSidebar } from "@/components/AiSidebar";
 
 vi.mock("@/lib/api", () => ({
   sendChat: vi.fn(),
+  clearConversation: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { sendChat } from "@/lib/api";
+import { sendChat, clearConversation } from "@/lib/api";
 
 const mockedSendChat = sendChat as unknown as ReturnType<typeof vi.fn>;
+const mockedClearConversation = clearConversation as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mockedSendChat.mockReset();
+  mockedClearConversation.mockReset();
+  mockedClearConversation.mockResolvedValue(undefined);
 });
 
 describe("AiSidebar", () => {

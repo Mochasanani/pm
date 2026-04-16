@@ -3,16 +3,30 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
-const { initialData } = await vi.hoisted(() => import("@/lib/kanban"));
+const { fixtureBoard } = vi.hoisted(() => ({
+  fixtureBoard: {
+    columns: [
+      { id: "col-1", title: "Backlog", cardIds: ["c1"] },
+      { id: "col-2", title: "Discovery", cardIds: [] },
+      { id: "col-3", title: "In Progress", cardIds: [] },
+      { id: "col-4", title: "Review", cardIds: [] },
+      { id: "col-5", title: "Done", cardIds: [] },
+    ],
+    cards: {
+      c1: { id: "c1", title: "Seed", details: "Seed details" },
+    },
+  },
+}));
 
 vi.mock("@/lib/api", () => ({
-  fetchBoard: vi.fn().mockResolvedValue(initialData),
+  fetchBoard: vi.fn().mockResolvedValue(fixtureBoard),
   renameColumn: vi.fn().mockResolvedValue(undefined),
   createCard: vi.fn().mockResolvedValue({ id: 999, title: "New card", details: "Notes" }),
   deleteCard: vi.fn().mockResolvedValue(undefined),
   moveCardApi: vi.fn().mockResolvedValue(undefined),
   logout: vi.fn().mockResolvedValue(undefined),
   sendChat: vi.fn().mockResolvedValue({ response: "ok", board_updates: [] }),
+  clearConversation: vi.fn().mockResolvedValue(undefined),
 }));
 
 const renderBoard = async () => {

@@ -74,6 +74,7 @@ export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
     if (!over || active.id === over.id || !board) return;
 
     const newColumns = moveCard(board.columns, active.id as string, over.id as string);
+    if (newColumns === board.columns) return;
     setBoard({ ...board, columns: newColumns });
   };
 
@@ -82,21 +83,22 @@ export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
     setActiveCardId(null);
 
     if (!over || !board) {
-      // Cancelled -- rollback
       if (preDragBoard) setBoard(preDragBoard);
       setPreDragBoard(null);
       return;
     }
 
-    // Apply final position if different from current
-    if (active.id !== over.id) {
-      const newColumns = moveCard(board.columns, active.id as string, over.id as string);
-      setBoard({ ...board, columns: newColumns });
+    const cardId = active.id as string;
+    const finalColumns =
+      active.id !== over.id
+        ? moveCard(board.columns, cardId, over.id as string)
+        : board.columns;
+
+    if (finalColumns !== board.columns) {
+      setBoard({ ...board, columns: finalColumns });
     }
 
-    // Fire API call for wherever the card ended up
-    const cardId = active.id as string;
-    const targetCol = board.columns.find((col) => col.cardIds.includes(cardId));
+    const targetCol = finalColumns.find((col) => col.cardIds.includes(cardId));
     if (targetCol) {
       const position = targetCol.cardIds.indexOf(cardId);
       moveCardApi(cardId, targetCol.id, position).catch(() => {
@@ -257,17 +259,27 @@ export const KanbanBoard = ({ user, onLogout }: KanbanBoardProps) => {
           onDragEnd={handleDragEnd}
         >
           <section className="grid gap-6 lg:grid-cols-5">
-            {board.columns.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                cards={column.cardIds.map((cardId) => board.cards[cardId])}
-                isDragTarget={activeCardId != null && column.cardIds.includes(activeCardId) && !preDragBoard?.columns.find((c) => c.id === column.id)?.cardIds.includes(activeCardId)}
-                onRename={handleRenameColumn}
-                onAddCard={handleAddCard}
-                onDeleteCard={handleDeleteCard}
-              />
-            ))}
+            {board.columns.map((column) => {
+              const wasOriginalColumn =
+                preDragBoard?.columns
+                  .find((c) => c.id === column.id)
+                  ?.cardIds.includes(activeCardId ?? "") ?? false;
+              const isDragTarget =
+                activeCardId != null &&
+                column.cardIds.includes(activeCardId) &&
+                !wasOriginalColumn;
+              return (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  isDragTarget={isDragTarget}
+                  onRename={handleRenameColumn}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                />
+              );
+            })}
           </section>
           <DragOverlay>
             {activeCard ? (

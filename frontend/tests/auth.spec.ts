@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { resetBoard } from "./helpers";
+
+test.beforeEach(async ({ request }) => {
+  await resetBoard(request);
+});
 
 test.describe("authentication", () => {
   test("shows login page when not authenticated", async ({ page }) => {

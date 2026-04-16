@@ -7,9 +7,17 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      DEV_MODE: "${DEV_MODE:-}"
     volumes:
       - pm-data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   pm-data:

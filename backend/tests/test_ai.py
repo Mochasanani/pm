@@ -103,7 +103,11 @@ def test_chat_text_only_response(fake_key, auth_client):
     with patch("app.ai.OpenAI", return_value=fake):
         resp = auth_client.post("/api/ai/chat", json={"message": "hi"})
     assert resp.status_code == 200
-    assert resp.json() == {"response": "Hello there", "board_updates": []}
+    data = resp.json()
+    assert data["response"] == "Hello there"
+    assert data["board_updates"] == []
+    assert data["applied"] == 0
+    assert data["skipped"] == 0
 
 
 def test_chat_applies_create_card(fake_key, auth_client):
@@ -204,6 +208,53 @@ def test_apply_update_ignores_invalid(test_db, auth_client):
         action="move_card", card_id=99999, column_id=99999, position=0
     ))
     conn.close()
+
+
+def test_chat_history_capped(fake_key, auth_client):
+    """Conversation history should stay within MAX_HISTORY_TURNS."""
+    from app.ai import MAX_HISTORY_TURNS, conversations
+
+    fake = MagicMock()
+    fake.chat.completions.parse.side_effect = [_mock_parsed(f"r{i}") for i in range(MAX_HISTORY_TURNS)]
+    with patch("app.ai.OpenAI", return_value=fake):
+        for i in range(MAX_HISTORY_TURNS // 2 + 5):
+            auth_client.post("/api/ai/chat", json={"message": f"m{i}"})
+    assert len(conversations["user"]) <= MAX_HISTORY_TURNS
+
+
+def test_clear_conversation(fake_key, auth_client):
+    from app.ai import conversations
+
+    fake = MagicMock()
+    fake.chat.completions.parse.return_value = _mock_parsed("hi")
+    with patch("app.ai.OpenAI", return_value=fake):
+        auth_client.post("/api/ai/chat", json={"message": "hello"})
+    assert "user" in conversations and len(conversations["user"]) > 0
+
+    resp = auth_client.delete("/api/ai/conversation")
+    assert resp.status_code == 200
+    assert "user" not in conversations
+
+
+def test_clear_conversation_requires_auth(client):
+    resp = client.delete("/api/ai/conversation")
+    assert resp.status_code == 401
+
+
+def test_chat_returns_applied_and_skipped_counts(fake_key, auth_client):
+    board = auth_client.get("/api/board").json()
+    col_id = board["columns"][0]["id"]
+    updates = [
+        BoardUpdate(action="create_card", column_id=col_id, title="ok"),
+        BoardUpdate(action="delete_card", card_id=99999),  # missing -> skipped
+    ]
+    fake = MagicMock()
+    fake.chat.completions.parse.return_value = _mock_parsed("done", updates)
+    with patch("app.ai.OpenAI", return_value=fake):
+        resp = auth_client.post("/api/ai/chat", json={"message": "go"})
+    body = resp.json()
+    assert body["applied"] == 1
+    assert body["skipped"] == 1
 
 
 @pytest.mark.skipif(

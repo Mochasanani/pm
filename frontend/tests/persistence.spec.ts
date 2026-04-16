@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { resetBoard } from "./helpers";
 
 async function login(page: Page) {
   await page.goto("/");
@@ -9,6 +10,10 @@ async function login(page: Page) {
 }
 
 test.describe.serial("persistence across page refresh", () => {
+  test.beforeAll(async ({ request }) => {
+    await resetBoard(request);
+  });
+
   test("create a card, refresh, card persists", async ({ page }) => {
     await login(page);
     const firstColumn = page.locator('[data-testid^="column-"]').first();

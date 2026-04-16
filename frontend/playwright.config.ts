@@ -7,6 +7,7 @@ export default defineConfig({
     timeout: 10_000,
   },
   workers: 1,
+  retries: 2,
   use: {
     baseURL: process.env.BASE_URL ?? "http://127.0.0.1:3000",
     trace: "retain-on-failure",

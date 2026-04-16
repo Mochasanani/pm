@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { LoginPage } from "@/components/LoginPage";
-import { getMe } from "@/lib/auth";
+import { getMe } from "@/lib/api";
 
 export default function Home() {
   const [user, setUser] = useState<string | null>(null);

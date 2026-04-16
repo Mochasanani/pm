@@ -33,6 +33,15 @@ def get_connection(db_path: Path | str | None = None) -> sqlite3.Connection:
     return conn
 
 
+def db_conn():
+    """FastAPI dependency: yields a connection and closes it after the request."""
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (

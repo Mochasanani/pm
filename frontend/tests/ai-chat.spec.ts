@@ -1,4 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
+import { resetBoard } from "./helpers";
+
+test.beforeEach(async ({ request }) => {
+  await resetBoard(request);
+});
 
 async function login(page: Page) {
   await page.goto("/");

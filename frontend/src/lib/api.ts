@@ -1,7 +1,4 @@
-export const API_BASE =
-  typeof window !== "undefined" && window.location.origin !== "http://localhost:3000"
-    ? ""
-    : "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 function apiFetch(path: string, init?: RequestInit) {
   return fetch(`${API_BASE}${path}`, { credentials: "include", ...init });
@@ -49,7 +46,7 @@ export async function fetchBoard(): Promise<BoardData> {
   const data = await res.json();
   // Convert numeric IDs from backend to strings for frontend consistency
   const cards: BoardData["cards"] = {};
-  for (const [id, card] of Object.entries(data.cards)) {
+  for (const card of Object.values(data.cards)) {
     const c = card as { id: number; title: string; details: string };
     cards[String(c.id)] = { id: String(c.id), title: c.title, details: c.details };
   }
@@ -85,10 +82,16 @@ export async function moveCardApi(cardId: string, columnId: string, position: nu
 export type ChatReply = {
   response: string;
   board_updates: Array<Record<string, unknown>>;
+  applied?: number;
+  skipped?: number;
 };
 
 export async function sendChat(message: string): Promise<ChatReply> {
   const res = await jsonPost("/api/ai/chat", { message });
   if (!res.ok) throw new Error("Chat failed");
   return res.json();
+}
+
+export async function clearConversation(): Promise<void> {
+  await apiFetch("/api/ai/conversation", { method: "DELETE" });
 }
