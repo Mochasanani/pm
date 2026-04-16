@@ -98,14 +98,14 @@ Add login screen with hardcoded credentials ("user", "password") and logout func
 
 Propose a database schema for the Kanban, document it, and get user approval.
 
-- [ ] Design SQLite schema supporting:
-  - [ ] Multiple users (for future, but MVP uses one)
-  - [ ] One board per user
-  - [ ] Columns with ordering and custom titles
-  - [ ] Cards with title, details, and ordering within columns
-- [ ] Save proposed schema as `docs/schema.json`
-- [ ] Write `docs/DATABASE.md` explaining the schema, relationships, and design decisions
-- [ ] Get user sign-off on schema before proceeding
+- [x] Design SQLite schema supporting:
+  - [x] Multiple users (for future, but MVP uses one)
+  - [x] One board per user
+  - [x] Columns with ordering and custom titles
+  - [x] Cards with title, details, and ordering within columns
+- [x] Save proposed schema as `docs/schema.json`
+- [x] Write `docs/DATABASE.md` explaining the schema, relationships, and design decisions
+- [x] Get user sign-off on schema before proceeding
 
 **Success criteria:** Schema documented and approved. Supports the current feature set and the multi-user future requirement.
 
@@ -115,23 +115,23 @@ Propose a database schema for the Kanban, document it, and get user approval.
 
 Add API routes for reading and modifying the Kanban board. Database auto-creates if missing.
 
-- [ ] Implement database initialization (create tables if not exist on startup)
-- [ ] Seed default board data for new users on first login
-- [ ] `GET /api/board` -- returns the full board (columns + cards) for the logged-in user
-- [ ] `PUT /api/board/columns/:id` -- rename a column
-- [ ] `POST /api/board/cards` -- create a card in a column
-- [ ] `PUT /api/board/cards/:id` -- update a card's title/details
-- [ ] `DELETE /api/board/cards/:id` -- delete a card
-- [ ] `PUT /api/board/cards/:id/move` -- move a card to a column at a position
-- [ ] All endpoints require authentication (return 401 if not logged in)
+- [x] Implement database initialization (create tables if not exist on startup)
+- [x] Seed default board data for new users on first login
+- [x] `GET /api/board` -- returns the full board (columns + cards) for the logged-in user
+- [x] `PUT /api/board/columns/:id` -- rename a column
+- [x] `POST /api/board/cards` -- create a card in a column
+- [x] `PUT /api/board/cards/:id` -- update a card's title/details
+- [x] `DELETE /api/board/cards/:id` -- delete a card
+- [x] `PUT /api/board/cards/:id/move` -- move a card to a column at a position
+- [x] All endpoints require authentication (return 401 if not logged in)
 
 **Tests:**
-- [ ] Unit test each endpoint with valid and invalid inputs
-- [ ] Unit test authentication enforcement on every endpoint
-- [ ] Unit test database auto-creation from scratch
-- [ ] Unit test default board seeding for a new user
-- [ ] Integration test: full CRUD cycle (create card, read board, update card, move card, delete card)
-- [ ] Maintain >=80% backend test coverage
+- [x] Unit test each endpoint with valid and invalid inputs
+- [x] Unit test authentication enforcement on every endpoint
+- [x] Unit test database auto-creation from scratch
+- [x] Unit test default board seeding for a new user
+- [x] Integration test: full CRUD cycle (create card, read board, update card, move card, delete card)
+- [x] Backend test coverage at 91%
 
 **Success criteria:** All board CRUD operations work via API. Database is created automatically. All endpoints are auth-protected. Tests pass with >=80% coverage.
 

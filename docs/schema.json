@@ -1,0 +1,27 @@
+{
+  "tables": {
+    "users": {
+      "columns": {
+        "id": "INTEGER PRIMARY KEY",
+        "username": "TEXT UNIQUE NOT NULL"
+      }
+    },
+    "columns": {
+      "columns": {
+        "id": "INTEGER PRIMARY KEY",
+        "user_id": "INTEGER NOT NULL REFERENCES users(id)",
+        "title": "TEXT NOT NULL",
+        "position": "INTEGER NOT NULL"
+      }
+    },
+    "cards": {
+      "columns": {
+        "id": "INTEGER PRIMARY KEY",
+        "column_id": "INTEGER NOT NULL REFERENCES columns(id)",
+        "title": "TEXT NOT NULL",
+        "details": "TEXT NOT NULL DEFAULT ''",
+        "position": "INTEGER NOT NULL"
+      }
+    }
+  }
+}
