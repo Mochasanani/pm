@@ -1,28 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { login } from "@/lib/api";
+import { login, register } from "@/lib/api";
 
 type LoginPageProps = {
-  onLogin: () => void;
+  onAuthenticated: (username: string) => void;
 };
 
-export const LoginPage = ({ onLogin }: LoginPageProps) => {
+type Mode = "login" | "register";
+
+export const LoginPage = ({ onAuthenticated }: LoginPageProps) => {
+  const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isRegister = mode === "register";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const result = await login(username, password);
+    const result = isRegister
+      ? await register({
+          username,
+          password,
+          display_name: displayName || undefined,
+          email: email || undefined,
+        })
+      : await login(username, password);
     setLoading(false);
     if (result.ok) {
-      onLogin();
+      onAuthenticated(result.user?.username ?? username);
     } else {
-      setError(result.error ?? "Login failed");
+      setError(result.error ?? (isRegister ? "Sign up failed" : "Login failed"));
     }
   };
 
@@ -34,10 +48,10 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
 
         <form
           onSubmit={handleSubmit}
-          className="relative w-[380px] rounded-[32px] border border-[var(--stroke)] bg-white/90 p-10 shadow-[var(--shadow)] backdrop-blur"
+          className="relative w-[400px] rounded-[32px] border border-[var(--stroke)] bg-white/90 p-10 shadow-[var(--shadow)] backdrop-blur"
         >
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-            Welcome back
+            {isRegister ? "Create your account" : "Welcome back"}
           </p>
           <h1 className="mt-3 font-display text-3xl font-semibold text-[var(--navy-dark)]">
             Kanban Studio
@@ -58,14 +72,51 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] focus:ring-2 focus:ring-[var(--primary-blue)]/20"
                 autoComplete="username"
+                required
               />
             </div>
+            {isRegister && (
+              <>
+                <div>
+                  <label
+                    htmlFor="displayName"
+                    className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]"
+                  >
+                    Display name <span className="lowercase tracking-normal">(optional)</span>
+                  </label>
+                  <input
+                    id="displayName"
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] focus:ring-2 focus:ring-[var(--primary-blue)]/20"
+                    autoComplete="name"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]"
+                  >
+                    Email <span className="lowercase tracking-normal">(optional)</span>
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] focus:ring-2 focus:ring-[var(--primary-blue)]/20"
+                    autoComplete="email"
+                  />
+                </div>
+              </>
+            )}
             <div>
               <label
                 htmlFor="password"
                 className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]"
               >
-                Password
+                Password {isRegister && <span className="lowercase tracking-normal">(min 8)</span>}
               </label>
               <input
                 id="password"
@@ -73,7 +124,9 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)] focus:ring-2 focus:ring-[var(--primary-blue)]/20"
-                autoComplete="current-password"
+                autoComplete={isRegister ? "new-password" : "current-password"}
+                minLength={isRegister ? 8 : undefined}
+                required
               />
             </div>
           </div>
@@ -89,7 +142,26 @@ export const LoginPage = ({ onLogin }: LoginPageProps) => {
             disabled={loading}
             className="mt-6 w-full rounded-full bg-[var(--primary-blue)] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading
+              ? isRegister
+                ? "Creating account..."
+                : "Signing in..."
+              : isRegister
+              ? "Create account"
+              : "Sign in"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setMode(isRegister ? "login" : "register");
+            }}
+            className="mt-4 w-full text-center text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+          >
+            {isRegister
+              ? "Already have an account? Sign in"
+              : "Need an account? Sign up"}
           </button>
         </form>
       </div>

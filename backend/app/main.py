@@ -8,8 +8,10 @@ from fastapi.staticfiles import StaticFiles
 
 from app.ai import router as ai_router
 from app.auth import router as auth_router
-from app.board import router as board_router
-from app.db import get_connection, init_db
+from app.board import router as legacy_board_router
+from app.boards import router as boards_router
+from app.db import ensure_default_board, get_connection, init_db
+from app.users import ensure_default_user
 
 
 @asynccontextmanager
@@ -17,6 +19,8 @@ async def lifespan(app: FastAPI):
     conn = get_connection()
     try:
         init_db(conn)
+        user_id = ensure_default_user(conn)
+        ensure_default_board(conn, user_id)
     finally:
         conn.close()
     yield
@@ -35,7 +39,8 @@ if _cors_origins:
     )
 
 app.include_router(auth_router)
-app.include_router(board_router)
+app.include_router(legacy_board_router)
+app.include_router(boards_router)
 app.include_router(ai_router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"

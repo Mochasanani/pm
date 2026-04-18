@@ -55,7 +55,7 @@ describe("AiSidebar", () => {
     await userEvent.type(screen.getByLabelText("Chat message"), "hi");
     await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
-    expect(mockedSendChat).toHaveBeenCalledWith("hi");
+    expect(mockedSendChat).toHaveBeenCalledWith("hi", undefined);
     await waitFor(() => {
       expect(screen.getByTestId("ai-msg-user")).toHaveTextContent("hi");
       expect(screen.getByTestId("ai-msg-assistant")).toHaveTextContent("Hello back");

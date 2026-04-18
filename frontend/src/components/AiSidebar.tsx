@@ -3,6 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { clearConversation, sendChat } from "@/lib/api";
+import {
+  BroomIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  SendIcon,
+  SparklesIcon,
+} from "@/components/Icons";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -10,9 +17,10 @@ type AiSidebarProps = {
   open: boolean;
   onToggle: () => void;
   onBoardChanged: () => void;
+  boardId?: number | null;
 };
 
-export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) => {
+export const AiSidebar = ({ open, onToggle, onBoardChanged, boardId }: AiSidebarProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,7 +39,7 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
     setMessages((m) => [...m, { role: "user", content: text }]);
     setLoading(true);
     try {
-      const reply = await sendChat(text);
+      const reply = await sendChat(text, boardId ?? undefined);
       const applied = reply.applied ?? reply.board_updates?.length ?? 0;
       const suffix = applied > 0 ? `\n\n_(${applied} change${applied === 1 ? "" : "s"} applied)_` : "";
       setMessages((m) => [
@@ -53,7 +61,7 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
     setMessages([]);
     setError(null);
     try {
-      await clearConversation();
+      await clearConversation(boardId ?? undefined);
     } catch {
       // best-effort
     }
@@ -70,9 +78,10 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
           type="button"
           onClick={onToggle}
           aria-label="Open chat"
-          className="mt-4 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--purple-secondary)] text-sm font-semibold text-white"
+          title="Open chat"
+          className="mt-4 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--secondary-purple)] text-white transition hover:brightness-110"
         >
-          AI
+          <SparklesIcon width={18} height={18} />
         </button>
         <span
           className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]"
@@ -80,6 +89,15 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
         >
           Assistant
         </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Expand chat"
+          title="Expand chat"
+          className="mt-auto mb-4 flex h-8 w-8 items-center justify-center rounded-full border border-[var(--stroke)] text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]"
+        >
+          <ChevronLeftIcon />
+        </button>
       </aside>
     );
   }
@@ -91,30 +109,37 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
       className="fixed right-0 top-0 z-40 flex h-screen w-[380px] flex-col border-l border-[var(--stroke)] bg-white shadow-[var(--shadow)]"
     >
       <div className="flex items-center justify-between border-b border-[var(--stroke)] px-5 py-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
-            Assistant
-          </p>
-          <h2 className="font-display text-lg font-semibold text-[var(--navy-dark)]">
-            Ask the AI
-          </h2>
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--secondary-purple)] text-white">
+            <SparklesIcon width={16} height={16} />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
+              Assistant
+            </p>
+            <h2 className="font-display text-base font-semibold text-[var(--navy-dark)]">
+              Ask the AI
+            </h2>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={handleClear}
             aria-label="Clear chat"
-            className="rounded-full border border-[var(--stroke)] px-3 py-1 text-xs font-semibold text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
+            title="Clear chat"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-[var(--navy-dark)]"
           >
-            Clear
+            <BroomIcon />
           </button>
           <button
             type="button"
             onClick={onToggle}
             aria-label="Collapse chat"
-            className="rounded-full border border-[var(--stroke)] px-3 py-1 text-xs font-semibold text-[var(--gray-text)] hover:text-[var(--navy-dark)]"
+            title="Collapse chat"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--gray-text)] transition hover:bg-[var(--surface)] hover:text-[var(--navy-dark)]"
           >
-            Collapse
+            <ChevronRightIcon />
           </button>
         </div>
       </div>
@@ -162,7 +187,7 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
       )}
 
       <form
-        className="flex gap-2 border-t border-[var(--stroke)] px-5 py-4"
+        className="flex items-center gap-2 border-t border-[var(--stroke)] px-5 py-4"
         onSubmit={(e) => {
           e.preventDefault();
           handleSend();
@@ -179,9 +204,11 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged }: AiSidebarProps) =>
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="rounded-full bg-[var(--purple-secondary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          aria-label="Send"
+          title="Send"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--secondary-purple)] text-white transition hover:brightness-110 disabled:opacity-50"
         >
-          Send
+          <SendIcon width={16} height={16} />
         </button>
       </form>
     </aside>

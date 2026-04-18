@@ -6,7 +6,8 @@ from openai import APIError
 
 from app import ai
 from app.ai import BoardUpdate, ChatResponse, apply_update, build_system_prompt
-from app.db import ensure_user, get_connection
+from app.db import ensure_default_board, get_connection
+from app.users import get_user_by_username
 
 
 def _mock_completion(content: str):
@@ -18,6 +19,16 @@ def _mock_completion(content: str):
 @pytest.fixture
 def fake_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+
+def _default_board_id() -> int:
+    conn = get_connection()
+    try:
+        user = get_user_by_username(conn, "user")
+        assert user is not None
+        return ensure_default_board(conn, user["id"])
+    finally:
+        conn.close()
 
 
 def test_get_client_uses_openrouter_base(fake_key):
@@ -72,9 +83,6 @@ def test_ai_test_live_openrouter_call(client):
     assert "4" in resp.json()["answer"]
 
 
-# ----- Part 9: /api/ai/chat -----
-
-
 def _mock_parsed(response: str, updates=None):
     c = MagicMock()
     c.choices = [MagicMock(message=MagicMock(parsed=ChatResponse(
@@ -108,6 +116,7 @@ def test_chat_text_only_response(fake_key, auth_client):
     assert data["board_updates"] == []
     assert data["applied"] == 0
     assert data["skipped"] == 0
+    assert data["board_id"] == _default_board_id()
 
 
 def test_chat_applies_create_card(fake_key, auth_client):
@@ -162,10 +171,12 @@ def test_chat_conversation_history_maintained(fake_key, auth_client):
 
 def test_apply_update_update_card(test_db, auth_client):
     board = auth_client.get("/api/board").json()
-    card_id = next(iter(board["cards"].keys()))
+    card_id = int(next(iter(board["cards"].keys())))
+    board_id = _default_board_id()
     conn = get_connection()
-    user_id = ensure_user(conn, "user")
-    apply_update(conn, user_id, BoardUpdate(action="update_card", card_id=int(card_id), title="Renamed"))
+    apply_update(conn, board_id, BoardUpdate(
+        action="update_card", card_id=card_id, title="Renamed"
+    ))
     row = conn.execute("SELECT title FROM cards WHERE id = ?", (card_id,)).fetchone()
     conn.close()
     assert row["title"] == "Renamed"
@@ -174,9 +185,9 @@ def test_apply_update_update_card(test_db, auth_client):
 def test_apply_update_delete_card(test_db, auth_client):
     board = auth_client.get("/api/board").json()
     card_id = int(next(iter(board["cards"].keys())))
+    board_id = _default_board_id()
     conn = get_connection()
-    user_id = ensure_user(conn, "user")
-    apply_update(conn, user_id, BoardUpdate(action="delete_card", card_id=card_id))
+    apply_update(conn, board_id, BoardUpdate(action="delete_card", card_id=card_id))
     row = conn.execute("SELECT id FROM cards WHERE id = ?", (card_id,)).fetchone()
     conn.close()
     assert row is None
@@ -186,9 +197,9 @@ def test_apply_update_move_card(test_db, auth_client):
     board = auth_client.get("/api/board").json()
     card_id = int(next(iter(board["cards"].keys())))
     target_col = board["columns"][-1]["id"]
+    board_id = _default_board_id()
     conn = get_connection()
-    user_id = ensure_user(conn, "user")
-    apply_update(conn, user_id, BoardUpdate(
+    apply_update(conn, board_id, BoardUpdate(
         action="move_card", card_id=card_id, column_id=target_col, position=0
     ))
     row = conn.execute("SELECT column_id, position FROM cards WHERE id = ?", (card_id,)).fetchone()
@@ -198,13 +209,17 @@ def test_apply_update_move_card(test_db, auth_client):
 
 
 def test_apply_update_ignores_invalid(test_db, auth_client):
+    board_id = _default_board_id()
     conn = get_connection()
-    user_id = ensure_user(conn, "user")
     # missing required fields — should no-op, not raise
-    apply_update(conn, user_id, BoardUpdate(action="create_card"))
-    apply_update(conn, user_id, BoardUpdate(action="update_card", card_id=99999, title="x"))
-    apply_update(conn, user_id, BoardUpdate(action="delete_card", card_id=99999))
-    apply_update(conn, user_id, BoardUpdate(
+    assert not apply_update(conn, board_id, BoardUpdate(action="create_card"))
+    assert not apply_update(conn, board_id, BoardUpdate(
+        action="update_card", card_id=99999, title="x"
+    ))
+    assert not apply_update(conn, board_id, BoardUpdate(
+        action="delete_card", card_id=99999
+    ))
+    assert not apply_update(conn, board_id, BoardUpdate(
         action="move_card", card_id=99999, column_id=99999, position=0
     ))
     conn.close()
@@ -215,11 +230,14 @@ def test_chat_history_capped(fake_key, auth_client):
     from app.ai import MAX_HISTORY_TURNS, conversations
 
     fake = MagicMock()
-    fake.chat.completions.parse.side_effect = [_mock_parsed(f"r{i}") for i in range(MAX_HISTORY_TURNS)]
+    fake.chat.completions.parse.side_effect = [
+        _mock_parsed(f"r{i}") for i in range(MAX_HISTORY_TURNS)
+    ]
     with patch("app.ai.OpenAI", return_value=fake):
         for i in range(MAX_HISTORY_TURNS // 2 + 5):
             auth_client.post("/api/ai/chat", json={"message": f"m{i}"})
-    assert len(conversations["user"]) <= MAX_HISTORY_TURNS
+    board_id = _default_board_id()
+    assert len(conversations[("user", board_id)]) <= MAX_HISTORY_TURNS
 
 
 def test_clear_conversation(fake_key, auth_client):
@@ -229,11 +247,12 @@ def test_clear_conversation(fake_key, auth_client):
     fake.chat.completions.parse.return_value = _mock_parsed("hi")
     with patch("app.ai.OpenAI", return_value=fake):
         auth_client.post("/api/ai/chat", json={"message": "hello"})
-    assert "user" in conversations and len(conversations["user"]) > 0
+    board_id = _default_board_id()
+    assert ("user", board_id) in conversations
 
     resp = auth_client.delete("/api/ai/conversation")
     assert resp.status_code == 200
-    assert "user" not in conversations
+    assert ("user", board_id) not in conversations
 
 
 def test_clear_conversation_requires_auth(client):
@@ -255,6 +274,41 @@ def test_chat_returns_applied_and_skipped_counts(fake_key, auth_client):
     body = resp.json()
     assert body["applied"] == 1
     assert body["skipped"] == 1
+
+
+def test_chat_scoped_to_board_id(fake_key, auth_client):
+    """When board_id is provided explicitly, chat targets that board."""
+    # Create a second board
+    created = auth_client.post(
+        "/api/boards", json={"name": "Side project"}
+    ).json()
+    target_board_id = created["id"]
+    target_full = auth_client.get(f"/api/boards/{target_board_id}").json()
+    col_id = target_full["columns"][0]["id"]
+
+    updates = [BoardUpdate(
+        action="create_card", column_id=col_id, title="Scoped", details=""
+    )]
+    fake = MagicMock()
+    fake.chat.completions.parse.return_value = _mock_parsed("ok", updates)
+    with patch("app.ai.OpenAI", return_value=fake):
+        resp = auth_client.post(
+            "/api/ai/chat",
+            json={"message": "add", "board_id": target_board_id},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["board_id"] == target_board_id
+
+    after = auth_client.get(f"/api/boards/{target_board_id}").json()
+    titles = [c["title"] for c in after["cards"].values()]
+    assert "Scoped" in titles
+
+
+def test_chat_unknown_board_id_returns_404(fake_key, auth_client):
+    resp = auth_client.post(
+        "/api/ai/chat", json={"message": "hi", "board_id": 99999}
+    )
+    assert resp.status_code == 404
 
 
 @pytest.mark.skipif(

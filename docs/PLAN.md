@@ -275,3 +275,124 @@ Add a sidebar UI for AI chat that can update the board in real time.
 - On replies containing `board_updates`, frontend calls `loadBoard()` to refetch rather than applying updates locally — simpler, always consistent
 - E2e tests mock `/api/ai/chat` via Playwright route interception (no network/API key needed); the "AI-created card" test still uses real backend endpoints to simulate the board-state change
 **Success criteria:** Sidebar chat works end-to-end. AI can read and modify the board through conversation. UI updates reflect AI changes immediately. All tests pass.
+
+---
+
+## Part 11: Real Users + Multiple Boards (backend)
+
+Replace the hardcoded demo auth with real user accounts, and allow each user to own many boards.
+
+- [x] Expand the `users` table: `email`, `password_hash`, `display_name`, `created_at`
+- [x] Hash passwords with `bcrypt`; seed the demo `user` / `password` account
+- [x] Add a `boards` table (`user_id`, `name`, `description`, `position`, timestamps); cascade deletes
+- [x] Re-parent `columns` from `user_id` to `board_id`
+- [x] `POST /api/register` — username + password (+ optional email / display name); 201 on success, 409 on duplicates, 422 on weak inputs
+- [x] `GET/PUT /api/me` — fetch / update display name, email, password
+- [x] `GET /api/boards`, `POST /api/boards`, `GET/PUT/DELETE /api/boards/{id}` — boards CRUD with per-user isolation
+- [x] `PUT /api/boards/{id}/columns/{column_id}` + card endpoints scoped under `/api/boards/{id}/...`
+- [x] Keep legacy `/api/board*` endpoints as a thin shim over the user's default board
+- [x] AI `/api/ai/chat` accepts optional `board_id` and scopes conversation history by `(username, board_id)`
+
+**Tests:**
+- [x] Unit + integration tests for registration (success, conflict, validation, default-board seeding)
+- [x] Unit tests for profile update (display name, password change, email conflict)
+- [x] Tests for multi-board CRUD with cross-user isolation (alice cannot touch user's boards)
+- [x] Tests for scoped card/column ops rejecting cross-board IDs
+- [x] AI chat tests for scoped `board_id`
+- [x] Backend coverage stays >= 90% (currently 94%)
+
+**Success criteria:** New users can register. Each user sees only their own boards. All existing single-board flows keep working through the legacy shim.
+
+---
+
+## Part 12: Multi-Board Frontend
+
+Wire the frontend to the new APIs so users can register, switch, create, rename and delete boards.
+
+- [x] Update `api.ts` to expose `register`, `updateMe`, `listBoards`, `createBoard`, `renameBoard`, `deleteBoard`
+- [x] Add a register mode to the login page
+- [x] Add a `BoardSwitcher` with create / rename / delete in the header
+- [x] Persist the "currently selected" board id (`localStorage`) and use it for all mutations
+- [x] Thread `board_id` through the AI sidebar and conversation clear
+
+**Tests:**
+- [x] Unit: board switcher renders the current board name, lists alternatives, creates / renames / deletes
+- [x] Unit: switching boards refetches content via `fetchBoardById`
+- [x] E2e (`multi-board.spec.ts`): register, create second board, switch between them; users can't see each other's boards
+
+**Design decisions:**
+- The frontend uses the new `/api/boards/*` endpoints exclusively; the legacy `/api/board*` shim is still there but unused by the UI.
+- The `cards` map now keys on string ids to minimize churn from the earlier single-board code; `api.ts` normalizes ids at the boundary.
+
+**Success criteria:** Users can register, sign in, and manage multiple boards. All mutations target the currently selected board. No regressions.
+
+---
+
+## Part 13: Legacy Schema Migration
+
+Existing Docker volumes hold the single-board schema from Part 6; those installs must upgrade in place without losing data.
+
+- [x] `migrate_legacy_schema` adds missing `users` columns (`email`, `password_hash`, `display_name`, `created_at`)
+- [x] Creates the `boards` table, backfills one default board per user, re-parents `columns` from `user_id` to `board_id`
+- [x] Rebuild of the `columns` table uses `conn.commit(); PRAGMA foreign_keys=OFF` around the drop so cascading does not wipe `cards`
+- [x] Adds `cards.created_at`, `updated_at`, `due_date` on legacy DBs
+- [x] `init_db` runs the migration before `CREATE TABLE IF NOT EXISTS` so fresh installs are unaffected
+
+**Tests:**
+- [x] `test_migration.py`: legacy DB → boards created, cards preserved; `init_db` idempotent; no-op on fresh DB
+
+**Success criteria:** Existing Docker volumes boot cleanly and keep their cards; fresh installs are unchanged.
+
+---
+
+## Part 14: Card Details, Due Dates, and Profile
+
+Richer card editing and a profile editor off the board header.
+
+- [x] `CardEditModal`: full card editor with title, details, due date picker, delete action, `Escape` / click-outside close
+- [x] `cards.due_date` column (`YYYY-MM-DD`), validated on the backend with regex + `date.fromisoformat`
+- [x] `UNSET` sentinel + `model_fields_set` so PATCH distinguishes "leave alone" from "set null"
+- [x] Due-date badge on `KanbanCard` with `overdue` / `soon` / `ok` color states
+- [x] `ProfileModal` off the header: update `display_name`, `email`, `password` via `PUT /api/me`
+
+**Tests:**
+- [x] Backend: create-with-due-date, reject-bad-date (422), set/clear via PATCH, omit-leaves-untouched
+- [x] Frontend: open modal, save title/details/due-date; due-date badge renders; profile modal saves display name
+
+**Success criteria:** Cards carry due dates that round-trip through the API and render as status badges. Users can edit their profile from the header.
+
+---
+
+## Part 15: Labels
+
+Per-board labels with color, assignable to cards.
+
+- [x] `labels` + `card_labels` tables (cascade delete on board and card)
+- [x] `services.py`: `list_labels`, `create_label`, `update_label`, `delete_label`, `set_card_labels` with cross-board validation
+- [x] `load_board` batch-queries assignments and returns `labels` + per-card `label_ids`
+- [x] REST: `GET/POST /api/boards/{id}/labels`, `PUT/DELETE /api/boards/{id}/labels/{label_id}`, `PUT /api/boards/{id}/cards/{card_id}/labels`
+- [x] Color validated as `#RRGGBB`
+- [x] Frontend: `Label` type, API client (`listLabels`, `createLabel`, `updateLabel`, `deleteLabel`, `setCardLabels`)
+- [x] Label chips on `KanbanCard`; toggle picker in `CardEditModal` that only fires `setCardLabels` when the set actually changed
+
+**Tests:**
+- [x] Backend: empty list, CRUD, bad color (422), round-trip via `load_board`, delete removes assignments, cross-board label rejected (404)
+- [x] Frontend: toggling a label chip in the edit modal calls `setCardLabels` with the new ids
+
+**Success criteria:** Users can define colored labels per board and attach multiple labels to each card. Labels are isolated per board.
+
+---
+
+## Part 16: Search and Filter
+
+Narrow the board by keyword and by labels.
+
+- [x] Header `Search cards` input filters by `title + details` substring (case-insensitive)
+- [x] Label filter row renders a chip per label; clicking toggles membership in the active filter set (AND semantics)
+- [x] Filtering hides cards from all columns at once while leaving the underlying board state untouched (drag still works on visible cards)
+
+**Tests:**
+- [x] Frontend: typing in search narrows visible cards
+- [x] Frontend: clicking a label filter chip narrows to cards carrying that label
+
+**Success criteria:** Users can find cards by keyword or label on any board without navigating away. All prior tests still pass.
