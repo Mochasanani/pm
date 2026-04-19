@@ -396,3 +396,23 @@ Narrow the board by keyword and by labels.
 - [x] Frontend: clicking a label filter chip narrows to cards carrying that label
 
 **Success criteria:** Users can find cards by keyword or label on any board without navigating away. All prior tests still pass.
+
+---
+
+## Code Simplification Pass (post-Part 16)
+
+Full-codebase simplification: removed dead code, eliminated redundant patterns, and cleaned up minor quality issues across frontend and backend.
+
+**Backend**
+- `board.py` — removed trivial `_default_board_id` wrapper; all 6 call sites now call `ensure_default_board` directly
+- `services.py` — removed 3 section-divider comments and 1 "what" comment (kept WHY comments: UNSET sentinel, cascade rationale, FK pragma note)
+
+**Frontend**
+- `api.ts` — deleted 5 dead legacy single-board exports (`fetchBoard`, `renameColumn`, `createCard`, `deleteCard`, `moveCardApi`); none were called anywhere in the UI
+- `KanbanCard.tsx` — `dueDateStatus()` called once into a local `status` var (was called 3× on the same value)
+- `KanbanBoard.tsx` — `preDragBoard` changed from `useState` to `useRef` (never drove rendering; was causing spurious re-renders on every drag start/end); deduplicated `column.cardIds.filter(cardMatches)` that was computed twice per column per render
+- `LoginPage.tsx` + `page.tsx` — `onAuthenticated` now receives the `User` object directly from the API result, eliminating a redundant `getMe()` re-fetch after every login/register
+- `AiSidebar.tsx` — removed duplicate `setError(null)` in the success path (was cleared before the try block and again inside it)
+- `BoardSwitcher.tsx` — extracted `withBusy` helper, collapsing the identical `setBusy / setError / try-catch-finally` scaffolding shared by `handleCreate`, `handleRename`, and `handleDelete`
+
+**Tests:** All 95 backend tests and 28 frontend unit tests pass after changes.

@@ -15,13 +15,9 @@ from app.db import db_conn, ensure_default_board, seed_board_columns
 router = APIRouter(prefix="/api/board")
 
 
-def _default_board_id(conn, user_id: int) -> int:
-    return ensure_default_board(conn, user_id)
-
-
 @router.get("")
 def get_board(user=Depends(require_user_record), conn=Depends(db_conn)):
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     return services.load_board(conn, board_id)
 
 
@@ -36,7 +32,7 @@ def rename_column(
     user=Depends(require_user_record),
     conn=Depends(db_conn),
 ):
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     try:
         return services.rename_column(conn, board_id, column_id, body.title)
     except services.NotFoundError as exc:
@@ -55,7 +51,7 @@ def create_card(
     user=Depends(require_user_record),
     conn=Depends(db_conn),
 ):
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     try:
         return services.create_card(
             conn, board_id, body.column_id, body.title, body.details
@@ -76,7 +72,7 @@ def update_card(
     user=Depends(require_user_record),
     conn=Depends(db_conn),
 ):
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     try:
         return services.update_card(conn, board_id, card_id, body.title, body.details)
     except services.NotFoundError as exc:
@@ -89,7 +85,7 @@ def delete_card(
     user=Depends(require_user_record),
     conn=Depends(db_conn),
 ):
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     try:
         services.delete_card(conn, board_id, card_id)
     except services.NotFoundError as exc:
@@ -109,7 +105,7 @@ def move_card(
     user=Depends(require_user_record),
     conn=Depends(db_conn),
 ):
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     try:
         services.move_card(conn, board_id, card_id, body.column_id, body.position)
     except services.NotFoundError as exc:
@@ -125,7 +121,7 @@ def reset_board(
     """Wipe and re-seed the default board. Gated by DEV_MODE=1; used by e2e tests."""
     if os.environ.get("DEV_MODE", "").lower() not in ("1", "true", "yes"):
         raise HTTPException(status_code=403, detail="DEV_MODE not enabled")
-    board_id = _default_board_id(conn, user["id"])
+    board_id = ensure_default_board(conn, user["id"])
     conn.execute(
         "DELETE FROM cards WHERE column_id IN (SELECT id FROM columns WHERE board_id = ?)",
         (board_id,),

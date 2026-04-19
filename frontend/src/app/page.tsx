@@ -19,15 +19,7 @@ export default function Home() {
   if (checking) return null;
 
   if (!user) {
-    return (
-      <LoginPage
-        onAuthenticated={() => {
-          // LoginPage already received the user from the API; refetch to
-          // populate the full record here.
-          getMe().then((me) => setUser(me));
-        }}
-      />
-    );
+    return <LoginPage onAuthenticated={(u) => setUser(u)} />;
   }
 
   return (

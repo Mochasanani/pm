@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { login, register } from "@/lib/api";
+import { login, register, type User } from "@/lib/api";
 
 type LoginPageProps = {
-  onAuthenticated: (username: string) => void;
+  onAuthenticated: (user: User) => void;
 };
 
 type Mode = "login" | "register";
@@ -34,7 +34,7 @@ export const LoginPage = ({ onAuthenticated }: LoginPageProps) => {
       : await login(username, password);
     setLoading(false);
     if (result.ok) {
-      onAuthenticated(result.user?.username ?? username);
+      onAuthenticated(result.user);
     } else {
       setError(result.error ?? (isRegister ? "Sign up failed" : "Login failed"));
     }

@@ -89,23 +89,23 @@ export const KanbanCard = ({ card, labels = [], onDelete, onOpen }: KanbanCardPr
               {card.details}
             </p>
           )}
-          {card.due_date && (
-            <span
-              data-testid={`due-date-${card.id}`}
-              data-status={dueDateStatus(card.due_date)}
-              className={clsx(
-                "mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                dueDateStatus(card.due_date) === "overdue" &&
-                  "bg-red-100 text-red-700",
-                dueDateStatus(card.due_date) === "soon" &&
-                  "bg-[var(--accent-yellow)]/20 text-[var(--accent-yellow)]",
-                dueDateStatus(card.due_date) === "ok" &&
-                  "bg-[var(--surface)] text-[var(--gray-text)]"
-              )}
-            >
-              Due {formatDueDate(card.due_date)}
-            </span>
-          )}
+          {card.due_date && (() => {
+            const status = dueDateStatus(card.due_date);
+            return (
+              <span
+                data-testid={`due-date-${card.id}`}
+                data-status={status}
+                className={clsx(
+                  "mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                  status === "overdue" && "bg-red-100 text-red-700",
+                  status === "soon" && "bg-[var(--accent-yellow)]/20 text-[var(--accent-yellow)]",
+                  status === "ok" && "bg-[var(--surface)] text-[var(--gray-text)]"
+                )}
+              >
+                Due {formatDueDate(card.due_date)}
+              </span>
+            );
+          })()}
         </button>
         <button
           type="button"

@@ -260,35 +260,6 @@ export async function setCardLabels(
   return body.label_ids;
 }
 
-// Legacy single-board API (delegates to user's first board on the backend).
-export async function fetchBoard(): Promise<BoardData> {
-  const res = await apiFetch("/api/board");
-  if (!res.ok) throw new Error("Failed to fetch board");
-  const data = await res.json();
-  return normalizeBoardContent(data);
-}
-
-export async function renameColumn(columnId: string, title: string) {
-  const res = await jsonPut(`/api/board/columns/${columnId}`, { title });
-  if (!res.ok) throw new Error("Failed to rename column");
-}
-
-export async function createCard(columnId: string, title: string, details: string) {
-  const res = await jsonPost("/api/board/cards", { column_id: Number(columnId), title, details });
-  if (!res.ok) throw new Error("Failed to create card");
-  return res.json() as Promise<{ id: number; title: string; details: string }>;
-}
-
-export async function deleteCard(cardId: string) {
-  const res = await apiFetch(`/api/board/cards/${cardId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to delete card");
-}
-
-export async function moveCardApi(cardId: string, columnId: string, position: number) {
-  const res = await jsonPut(`/api/board/cards/${cardId}/move`, { column_id: Number(columnId), position });
-  if (!res.ok) throw new Error("Failed to move card");
-}
-
 export type ChatReply = {
   response: string;
   board_updates: Array<Record<string, unknown>>;

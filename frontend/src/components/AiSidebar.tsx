@@ -46,7 +46,6 @@ export const AiSidebar = ({ open, onToggle, onBoardChanged, boardId }: AiSidebar
         ...m,
         { role: "assistant", content: reply.response + suffix },
       ]);
-      setError(null);
       if (reply.board_updates && reply.board_updates.length > 0) {
         onBoardChanged();
       }

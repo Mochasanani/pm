@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -184,11 +184,11 @@ export const KanbanBoard = ({ user, onUserUpdated, onLogout }: KanbanBoardProps)
 
   const cardsById = useMemo(() => board?.cards ?? {}, [board?.cards]);
 
-  const [preDragBoard, setPreDragBoard] = useState<BoardData | null>(null);
+  const preDragBoard = useRef<BoardData | null>(null);
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveCardId(event.active.id as string);
-    setPreDragBoard(board);
+    preDragBoard.current = board;
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -205,8 +205,8 @@ export const KanbanBoard = ({ user, onUserUpdated, onLogout }: KanbanBoardProps)
     setActiveCardId(null);
 
     if (!over || !board || currentBoardId == null) {
-      if (preDragBoard) setBoard(preDragBoard);
-      setPreDragBoard(null);
+      if (preDragBoard.current) setBoard(preDragBoard.current);
+      preDragBoard.current = null;
       return;
     }
 
@@ -224,10 +224,10 @@ export const KanbanBoard = ({ user, onUserUpdated, onLogout }: KanbanBoardProps)
     if (targetCol) {
       const position = targetCol.cardIds.indexOf(cardId);
       moveCardOnBoard(currentBoardId, cardId, targetCol.id, position).catch(() => {
-        if (preDragBoard) setBoard(preDragBoard);
+        if (preDragBoard.current) setBoard(preDragBoard.current);
       });
     }
-    setPreDragBoard(null);
+    preDragBoard.current = null;
   };
 
   const handleRenameColumn = (columnId: string, title: string) => {
@@ -502,26 +502,19 @@ export const KanbanBoard = ({ user, onUserUpdated, onLogout }: KanbanBoardProps)
           <section className="grid flex-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {board.columns.map((column) => {
               const wasOriginalColumn =
-                preDragBoard?.columns
+                preDragBoard.current?.columns
                   .find((c) => c.id === column.id)
                   ?.cardIds.includes(activeCardId ?? "") ?? false;
               const isDragTarget =
                 activeCardId != null &&
                 column.cardIds.includes(activeCardId) &&
                 !wasOriginalColumn;
+              const filteredIds = filtering ? column.cardIds.filter(cardMatches) : column.cardIds;
               return (
                 <KanbanColumn
                   key={column.id}
-                  column={
-                    filtering
-                      ? { ...column, cardIds: column.cardIds.filter(cardMatches) }
-                      : column
-                  }
-                  cards={
-                    filtering
-                      ? column.cardIds.filter(cardMatches).map((cardId) => board.cards[cardId])
-                      : column.cardIds.map((cardId) => board.cards[cardId])
-                  }
+                  column={filtering ? { ...column, cardIds: filteredIds } : column}
+                  cards={filteredIds.map((cardId) => board.cards[cardId])}
                   labels={board.labels ?? []}
                   isDragTarget={isDragTarget}
                   onRename={handleRenameColumn}

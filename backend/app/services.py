@@ -17,8 +17,6 @@ class _Unset:
 UNSET = _Unset()
 
 
-# ---------------- Board lookup helpers ----------------
-
 def get_user_board(conn: sqlite3.Connection, user_id: int, board_id: int) -> dict | None:
     row = conn.execute(
         "SELECT id, user_id, name, description, position, created_at, updated_at "
@@ -97,15 +95,12 @@ def delete_board(conn: sqlite3.Connection, user_id: int, board_id: int) -> None:
     conn.commit()
 
 
-# ---------------- Full board payload ----------------
-
 def load_board(conn: sqlite3.Connection, board_id: int) -> dict:
     columns = conn.execute(
         "SELECT id, title, position FROM columns WHERE board_id = ? ORDER BY position",
         (board_id,),
     ).fetchall()
 
-    # Preload all label assignments for this board in one query.
     label_rows = conn.execute(
         """
         SELECT cl.card_id, cl.label_id
@@ -143,8 +138,6 @@ def load_board(conn: sqlite3.Connection, board_id: int) -> dict:
     labels = list_labels(conn, board_id)
     return {"columns": result_columns, "cards": all_cards, "labels": labels}
 
-
-# ---------------- Labels ----------------
 
 def list_labels(conn: sqlite3.Connection, board_id: int) -> list[dict]:
     rows = conn.execute(
@@ -242,8 +235,6 @@ def set_card_labels(
     conn.commit()
     return sorted(unique_ids)
 
-
-# ---------------- Mutation helpers (board-scoped) ----------------
 
 def _column_for_board(conn: sqlite3.Connection, board_id: int, column_id: int) -> sqlite3.Row | None:
     return conn.execute(

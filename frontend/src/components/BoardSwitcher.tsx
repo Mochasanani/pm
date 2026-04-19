@@ -47,20 +47,26 @@ export const BoardSwitcher = ({
 
   const current = boards.find((b) => b.id === currentBoardId) ?? boards[0] ?? null;
 
-  const handleCreate = async () => {
-    const name = newName.trim();
-    if (!name) return;
+  const withBusy = async (fn: () => Promise<void>, fallback: string) => {
     setBusy(true);
     setError(null);
     try {
-      await onCreate(name);
-      setNewName("");
-      setCreating(false);
+      await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create");
+      setError(e instanceof Error ? e.message : fallback);
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    await withBusy(async () => {
+      await onCreate(name);
+      setNewName("");
+      setCreating(false);
+    }, "Failed to create");
   };
 
   const handleRename = async (boardId: number) => {
@@ -69,16 +75,10 @@ export const BoardSwitcher = ({
       setRenamingId(null);
       return;
     }
-    setBusy(true);
-    setError(null);
-    try {
+    await withBusy(async () => {
       await onRename(boardId, name);
       setRenamingId(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to rename");
-    } finally {
-      setBusy(false);
-    }
+    }, "Failed to rename");
   };
 
   const handleDelete = async (boardId: number) => {
@@ -87,15 +87,7 @@ export const BoardSwitcher = ({
       return;
     }
     if (!confirm("Delete this board and all its cards?")) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onDelete(boardId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete");
-    } finally {
-      setBusy(false);
-    }
+    await withBusy(() => onDelete(boardId), "Failed to delete");
   };
 
   return (

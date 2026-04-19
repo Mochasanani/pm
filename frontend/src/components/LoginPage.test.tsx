@@ -31,7 +31,7 @@ test("sign in flow calls login and invokes onAuthenticated", async () => {
   await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
   expect(loginMock).toHaveBeenCalledWith("user", "password");
-  expect(onAuth).toHaveBeenCalledWith("user");
+  expect(onAuth).toHaveBeenCalledWith({ id: 1, username: "user", email: null, display_name: "Demo User" });
 });
 
 test("displays error on failed login", async () => {
@@ -66,7 +66,7 @@ test("toggles into register mode and submits registration", async () => {
     display_name: "Alice",
     email: "a@b.com",
   });
-  expect(onAuth).toHaveBeenCalledWith("alice");
+  expect(onAuth).toHaveBeenCalledWith({ id: 2, username: "alice", email: "a@b.com", display_name: "Alice" });
 });
 
 test("shows register error from API", async () => {
